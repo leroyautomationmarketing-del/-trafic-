@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infos trajets – LEROY Automation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --fond:#0e2238; --panneau:#15304d; --trait:#27496b;
+    --texte:#f2f5f8; --discret:#9db3c8;
+    --jaune:#ffc928; --rouge:#ff6b5e; --vert:#5fd3a0;
+    font-size:1.85vh;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--fond);color:var(--texte);font-family:Barlow,system-ui,sans-serif;
+       display:grid;grid-template-rows:auto 1fr;gap:.8rem;padding:1rem 1.2rem}
+  header{display:flex;justify-content:space-between;align-items:baseline}
+  header h1{font:700 2.2rem "Barlow Condensed",sans-serif;letter-spacing:.02em}
+  #horloge{font:700 3rem "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+  #date{color:var(--discret);margin-right:1rem;font-size:1.1rem}
+  main{display:grid;grid-template-columns:1.25fr 1fr;gap:1rem;min-height:0}
+  .col{display:grid;grid-template-rows:1fr 1fr;gap:1rem;min-height:0}
+  section{background:var(--panneau);border-radius:.6rem;padding:.9rem 1.1rem;min-height:0;display:flex;flex-direction:column}
+  h2{font:700 1.5rem "Barlow Condensed",sans-serif;display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem}
+  h2 small{font:400 .8rem Barlow,sans-serif;color:var(--discret)}
+  #carte{flex:1;width:100%;border:0;border-radius:.4rem;min-height:0;background:var(--fond)}
+  #alerte{display:flex;align-items:center;gap:.8rem;margin-top:.6rem;padding:.55rem .8rem;border-radius:.4rem;
+          background:var(--fond);border-left:.35rem solid var(--vert);font-size:1.25rem;min-height:2.9rem}
+  #alerte.danger{border-left-color:var(--rouge)} #alerte.info{border-left-color:var(--jaune)}
+  #alerte b{font:700 1.3rem "Barlow Condensed",sans-serif;white-space:nowrap}
+  #alerte span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  ul{list-style:none;overflow:hidden}
+  li{display:grid;grid-template-columns:5.2rem 4.2rem 1fr auto;align-items:center;gap:.7rem;
+     padding:.45rem 0;border-top:1px solid var(--trait)}
+  li:first-child{border-top:0}
+  .t{font:700 2rem "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums}
+  .tag{background:var(--fond);border:1px solid var(--trait);border-radius:.3rem;text-align:center;
+       font:700 1.1rem "Barlow Condensed",sans-serif;padding:.1rem .2rem}
+  .dest{font-size:1.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .puce{font-weight:600;font-size:.95rem;border-radius:.3rem;padding:.15rem .5rem}
+  .late{background:var(--rouge);color:#2b0a07}
+  .ok{color:var(--vert)} .rt{color:var(--jaune)} .th{color:var(--discret)}
+  .note{color:var(--discret);font-size:.85rem;margin-top:auto;padding-top:.4rem}
+  .demo{color:var(--jaune)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Autour de LEROY Automation</h1>
+  <div><span id="date"></span><span id="horloge"></span></div>
+</header>
+<main>
+  <section>
+    <h2>Circulation en direct (Waze) <small id="noteTrafic"></small></h2>
+    <iframe id="carte" title="Carte Waze" loading="eager"></iframe>
+    <div id="alerte"><b>Accidents</b><span>Chargement…</span></div>
+  </section>
+  <div class="col">
+    <section>
+      <h2>Trains – Labège Innopole <small id="majTrains"></small></h2>
+      <ul id="trains"></ul>
+      <p class="note" id="noteTrains"></p>
+    </section>
+    <section>
+      <h2>Bus autour de l'entreprise <small id="majBus"></small></h2>
+      <ul id="bus"></ul>
+      <p class="note" id="noteBus"></p>
+    </section>
+  </div>
+</main>
+
+<script>
+/* ============ À RENSEIGNER ============ */
+const CONFIG = {
+  // 250 Rue Max Planck, 31670 Labège : coordonnées approximatives, à affiner (clic droit sur Google Maps > copier les coordonnées)
+  lieu: { lat: 43.5388, lon: 1.5155, zoom: 14 },
+  tomtomKey: "",                                    // clé TomTom gratuite : sert uniquement à la ligne « accidents »
+  rayonKm: 5,                                       // rayon de recherche des accidents autour de l'entreprise
+  sncf:   { token: "", stopArea: "stop_area:SNCF:87612002" },  // gare Labège Innopole ; il manque le jeton API SNCF
+  tisseo: { key: "", arrets: [] },                  // clé API Tisséo + identifiants des arrêts de bus proches
+  refreshSec: 60
+};
+/* ====================================== */
+
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, "0");
+const hm = d => pad(d.getHours()) + ":" + pad(d.getMinutes());
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const parseNav = s => new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8), +s.slice(9,11), +s.slice(11,13), +s.slice(13,15));
+
+/* Horloge */
+function tick(){
+  const n = new Date();
+  $("#horloge").textContent = hm(n);
+  $("#date").textContent = n.toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"});
+}
+tick(); setInterval(tick, 1000);
+
+/* Carte Waze (se met à jour toute seule) */
+const L0 = CONFIG.lieu;
+$("#carte").src = `https://embed.waze.com/iframe?zoom=${L0.zoom}&lat=${L0.lat}&lon=${L0.lon}&pin=1&ct=livemap`;
+
+/* Ligne « accidents » : API incidents TomTom */
+let incidents = [], idx = 0;
+const TYPES = {1:["Accident",3], 8:["Route fermée",3], 7:["Voie fermée",2], 14:["Véhicule en panne",2], 6:["Bouchon",2], 9:["Travaux",1]};
+function montre(){
+  const el = $("#alerte");
+  if(!incidents.length){ el.className = ""; el.innerHTML = "<b>Accidents</b><span>Aucun accident signalé autour de l'entreprise</span>"; return; }
+  const i = incidents[idx % incidents.length]; idx++;
+  el.className = i.gravite === 3 ? "danger" : "info";
+  el.innerHTML = `<b>${esc(i.type)}</b><span>${esc(i.texte)}</span>`;
+}
+async function getIncidents(){
+  if(!CONFIG.tomtomKey) return {demo:true, rows:[
+    {type:"Accident", gravite:3, texte:"Rocade Est, vers Montpellier (+6 min)"},
+    {type:"Véhicule en panne", gravite:2, texte:"D 16, vers Labège"}]};
+  const dLat = CONFIG.rayonKm/111, dLon = CONFIG.rayonKm/(111*Math.cos(L0.lat*Math.PI/180));
+  const bbox = [L0.lon-dLon, L0.lat-dLat, L0.lon+dLon, L0.lat+dLat].join(",");
+  const champs = encodeURIComponent("{incidents{properties{iconCategory,events{description},from,to,roadNumbers,delay}}}");
+  const r = await fetch(`https://api.tomtom.com/traffic/services/5/incidentDetails?key=${CONFIG.tomtomKey}&bbox=${bbox}&fields=${champs}&language=fr-FR&timeValidityFilter=present`);
+  if(!r.ok) throw new Error("TomTom " + r.status);
+  const j = await r.json();
+  const rows = (j.incidents||[]).map(x => x.properties).filter(p => TYPES[p.iconCategory]).map(p => {
+    const [type, gravite] = TYPES[p.iconCategory];
+    const route = (p.roadNumbers||[]).join(", ");
+    const texte = [route, p.from && p.to ? `de ${p.from} vers ${p.to}` : (p.from || p.to || p.events?.[0]?.description || ""),
+                   p.delay > 60 ? `(+${Math.round(p.delay/60)} min)` : ""].filter(Boolean).join(" ");
+    return {type, gravite, texte};
+  }).sort((a,b) => b.gravite - a.gravite);
+  return {rows};
+}
+async function majTrafic(){
+  try{
+    const {rows, demo} = await getIncidents();
+    incidents = rows; idx = 0; montre();
+    $("#noteTrafic").innerHTML = demo ? `<span class="demo">Accidents : démonstration</span>` : "Accidents mis à jour à " + hm(new Date());
+  }catch(e){
+    $("#noteTrafic").textContent = "Accidents indisponibles (" + e.message + ")";
+  }
+}
+setInterval(montre, 7000);
+
+/* Données de démonstration (affichées tant que les clés ne sont pas renseignées) */
+const inMin = m => new Date(Date.now() + m*60000);
+const demoTrains = () => [
+  {time:inMin(7),  delay:0, tag:"TER", label:"Toulouse Matabiau"},
+  {time:inMin(24), delay:6, tag:"TER", label:"Narbonne"},
+  {time:inMin(37), delay:0, tag:"TER", label:"Toulouse Matabiau"},
+  {time:inMin(55), delay:0, tag:"TER", label:"Carcassonne"}];
+const demoBus = () => [
+  {time:inMin(3),  rt:true,  tag:"L7", label:"Labège Gare"},
+  {time:inMin(9),  rt:true,  tag:"79", label:"Ramonville Métro"},
+  {time:inMin(14), rt:false, tag:"L7", label:"Basso Cambo"},
+  {time:inMin(21), rt:true,  tag:"79", label:"Labège Innopole"}];
+
+/* Trains : API SNCF (Navitia) */
+async function getTrains(){
+  const c = CONFIG.sncf;
+  if(!c.token || !c.stopArea) return {demo:true, rows:demoTrains()};
+  const r = await fetch(`https://api.sncf.com/v1/coverage/sncf/stop_areas/${c.stopArea}/departures?count=6&data_freshness=realtime`,
+    {headers:{Authorization:"Basic " + btoa(c.token + ":")}});
+  if(!r.ok) throw new Error("SNCF " + r.status);
+  const j = await r.json();
+  return {rows:(j.departures||[]).map(d => {
+    const prevu = parseNav(d.stop_date_time.base_departure_date_time);
+    const reel  = parseNav(d.stop_date_time.departure_date_time);
+    return {time:reel, delay:Math.round((reel-prevu)/60000),
+            tag:d.display_informations.commercial_mode || "Train", label:d.display_informations.direction};
+  })};
+}
+
+/* Bus : API Tisséo */
+const collecte = (o, out=[]) => {
+  if(Array.isArray(o)) o.forEach(x => collecte(x, out));
+  else if(o && typeof o === "object"){ if(o.dateTime && o.line) out.push(o); else Object.values(o).forEach(x => collecte(x, out)); }
+  return out;
+};
+async function getBus(){
+  const c = CONFIG.tisseo;
+  if(!c.key || !c.arrets.length) return {demo:true, rows:demoBus()};
+  const r = await fetch(`https://api.tisseo.fr/v2/stops_schedules.json?stopsList=${c.arrets.join(",")}&number=6&displayRealTime=1&key=${c.key}`);
+  if(!r.ok) throw new Error("Tisséo " + r.status);
+  const rows = collecte(await r.json()).map(d => ({
+    time:new Date(d.dateTime.replace(" ","T")),
+    rt:String(d.realTime||d.realtime).toLowerCase() === "yes",
+    tag:d.line.shortName,
+    label:Array.isArray(d.destination) ? d.destination[0]?.name : d.destination?.name
+  })).sort((a,b) => a.time - b.time);
+  return {rows};
+}
+
+/* Affichage */
+function puce(r){
+  if(typeof r.delay === "number") return r.delay > 0 ? `<span class="puce late">+${r.delay} min</span>` : `<span class="puce ok">à l'heure</span>`;
+  return r.rt ? `<span class="puce rt">temps réel</span>` : `<span class="puce th">théorique</span>`;
+}
+function dessine(ul, rows){
+  ul.innerHTML = rows.slice(0,5).map(r =>
+    `<li><span class="t">${hm(r.time)}</span><span class="tag">${esc(r.tag)}</span><span class="dest">${esc(r.label)}</span>${puce(r)}</li>`
+  ).join("") || `<li><span class="dest">Aucun départ à venir</span></li>`;
+}
+async function maj(nomUl, nomMaj, nomNote, fonction){
+  try{
+    const {rows, demo} = await fonction();
+    dessine($(nomUl), rows);
+    $(nomMaj).textContent = "Mis à jour à " + hm(new Date());
+    $(nomNote).innerHTML = demo ? `<span class="demo">Données de démonstration – renseignez les clés dans CONFIG</span>` : "";
+  }catch(e){
+    $(nomNote).textContent = "Données indisponibles, nouvelle tentative dans " + CONFIG.refreshSec + " s (" + e.message + ")";
+  }
+}
+function toutMaj(){
+  majTrafic();
+  maj("#trains", "#majTrains", "#noteTrains", getTrains);
+  maj("#bus", "#majBus", "#noteBus", getBus);
+}
+toutMaj(); setInterval(toutMaj, CONFIG.refreshSec * 1000);
+</script>
+</body>
+</html>
