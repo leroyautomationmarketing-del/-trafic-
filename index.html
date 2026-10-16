@@ -27,7 +27,6 @@
   h2{font:700 1.5rem "Barlow Condensed",sans-serif;display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem}
   h2 small{font:400 .8rem Barlow,sans-serif;color:var(--discret)}
   #cadre{flex:1;position:relative;overflow:hidden;border-radius:.4rem;min-height:0;background:var(--fond)}
-  /* l'iframe dépasse du cadre par le bas : le bandeau cookies de Waze est ainsi rogné */
   #carte{position:absolute;top:0;left:0;width:100%;height:calc(100% + 280px);border:0}
   #alerte{display:flex;align-items:center;gap:.8rem;margin-top:.6rem;padding:.55rem .8rem;border-radius:.4rem;
           background:var(--fond);border-left:.35rem solid var(--vert);font-size:1.25rem;min-height:2.9rem}
@@ -48,46 +47,55 @@
   .note{color:var(--discret);font-size:.85rem;margin-top:auto;padding-top:.4rem}
   .demo{color:var(--jaune)}
 </style>
- #alerte{display:none} 
 </head>
 <body>
+
 <header>
   <h1>Autour de LEROY Automation</h1>
   <div><span id="date"></span><span id="horloge"></span></div>
 </header>
+
 <main>
+  <!-- Colonne Gauche : Carte Waze & Accidents TomTom -->
   <section>
     <h2>Circulation en direct (Waze) <small id="noteTrafic"></small></h2>
     <div id="cadre"><iframe id="carte" title="Carte Waze" loading="eager"></iframe></div>
     <div id="alerte"><b>Accidents</b><span>Chargement…</span></div>
   </section>
+
+  <!-- Colonne Droite : Trains SNCF & Bus Tisséo -->
   <div class="col">
+    <!-- Bloc Trains -->
     <section>
-  <h2>Trains – Labège Innopole</h2>
-  <div style="flex:1;position:relative;overflow:hidden;border-radius:.4rem;background:#fff">
-    <iframe src="https://www.ter.sncf.com/occitanie/se-deplacer/prochains-departs/labege-innopole-87612002"
-      style="position:absolute;left:0;width:100%;top:-300px;height:calc(100% + 300px);border:0"></iframe>
-  </div>
-</section>
+      <h2>Trains – Labège Innopole <small id="majTrains"></small></h2>
+      <ul id="trains"></ul>
+      <div class="note" id="noteTrains"></div>
+    </section>
+
+    <!-- Bloc Bus -->
     <section>
-      <h2>Bus autour de l'entreprise <small id="majBus"></small></h2>
+      <h2>Bus – Labège Innopole / Planck <small id="majBus"></small></h2>
       <ul id="bus"></ul>
-      <p class="note" id="noteBus"></p>
+      <div class="note" id="noteBus"></div>
     </section>
   </div>
 </main>
 
 <script>
-/* ============ À RENSEIGNER ============ */
+/* ============ CONFIGURATION ============ */
 const CONFIG = {
-  // 250 Rue Max Planck, 31670 Labège : coordonnées approximatives, à affiner (clic droit sur Google Maps > copier les coordonnées)
   lieu: { lat: 43.5388, lon: 1.5155, zoom: 10 },
-  // Vue large de la carte Waze (rocade de Toulouse + Labège). Latitude volontairement un peu au sud : compense le rognage du bandeau cookies.
   carte: { lat: 43.53, lon: 1.47, zoom: 12 },
-  tomtomKey: "",                                    // clé TomTom gratuite : sert uniquement à la ligne « accidents »
-  rayonKm: 12,                                       // rayon de recherche des accidents autour de l'entreprise
-  sncf:   { token: "", stopArea: "stop_area:SNCF:87612002" },  // gare Labège Innopole ; il manque le jeton API SNCF
-  tisseo: { key: "", arrets: [] },                  // clé API Tisséo + identifiants des arrêts de bus proches
+  tomtomKey: "05L5n0Y7NnkNxQA4F1zhoCY13CKlYN6W", 
+  rayonKm: 12,
+  sncf: { 
+    token: "dd8071e9e8894165a795c56a7d8a7992018af0e071b4bb0f032a6d62", 
+    stopArea: "stop_area:SNCF:87612002" 
+  },
+  tisseo: { 
+    key: "", // Mettez votre clé API Tisséo ici lorsque vous l'aurez générée
+    arrets: ["18721", "18723", "18960", "18961"] // Arrêts Labège Innopole Gare & Rue Max Planck
+  },
   refreshSec: 60
 };
 /* ====================================== */
@@ -106,14 +114,13 @@ function tick(){
 }
 tick(); setInterval(tick, 1000);
 
-/* Carte Waze (se met à jour toute seule) */
-/* On peut tester un autre réglage sans modifier le fichier : ajouter ?zoom=8 (ou &lat=43.5&lon=1.45) à la fin de l'adresse */
+/* Carte Waze */
 const Q = new URLSearchParams(location.search);
-const L0 = CONFIG.lieu;   // position de l'entreprise : sert à chercher les accidents
+const L0 = CONFIG.lieu;
 const C = { lat: +(Q.get("lat") || CONFIG.carte.lat), lon: +(Q.get("lon") || CONFIG.carte.lon), zoom: +(Q.get("zoom") || CONFIG.carte.zoom) };
 $("#carte").src = `https://embed.waze.com/iframe?zoom=${C.zoom}&lat=${C.lat}&lon=${C.lon}&ct=livemap`;
 
-/* Ligne « accidents » : API incidents TomTom */
+/* API Incidents TomTom */
 let incidents = [], idx = 0;
 const TYPES = {1:["Accident",3], 8:["Route fermée",3], 7:["Voie fermée",2], 14:["Véhicule en panne",2], 6:["Bouchon",2], 9:["Travaux",1]};
 function montre(){
@@ -153,7 +160,7 @@ async function majTrafic(){
 }
 setInterval(montre, 7000);
 
-/* Données de démonstration (affichées tant que les clés ne sont pas renseignées) */
+/* Données de démonstration (secours) */
 const inMin = m => new Date(Date.now() + m*60000);
 const demoTrains = () => [
   {time:inMin(7),  delay:0, tag:"TER", label:"Toulouse Matabiau"},
@@ -161,12 +168,12 @@ const demoTrains = () => [
   {time:inMin(37), delay:0, tag:"TER", label:"Toulouse Matabiau"},
   {time:inMin(55), delay:0, tag:"TER", label:"Carcassonne"}];
 const demoBus = () => [
-  {time:inMin(3),  rt:true,  tag:"L7", label:"Labège Gare"},
-  {time:inMin(9),  rt:true,  tag:"79", label:"Ramonville Métro"},
-  {time:inMin(14), rt:false, tag:"L7", label:"Basso Cambo"},
-  {time:inMin(21), rt:true,  tag:"79", label:"Labège Innopole"}];
+  {time:inMin(3),  rt:true,  tag:"109", label:"Labège Innopole"},
+  {time:inMin(9),  rt:true,  tag:"80",  label:"Ramonville"},
+  {time:inMin(14), rt:false, tag:"204", label:"Labège Gare"},
+  {time:inMin(21), rt:true,  tag:"109", label:"Saint-Orens"}];
 
-/* Trains : API SNCF (Navitia) */
+/* API SNCF */
 async function getTrains(){
   const c = CONFIG.sncf;
   if(!c.token || !c.stopArea) return {demo:true, rows:demoTrains()};
@@ -182,7 +189,7 @@ async function getTrains(){
   })};
 }
 
-/* Bus : API Tisséo */
+/* API Tisséo */
 const collecte = (o, out=[]) => {
   if(Array.isArray(o)) o.forEach(x => collecte(x, out));
   else if(o && typeof o === "object"){ if(o.dateTime && o.line) out.push(o); else Object.values(o).forEach(x => collecte(x, out)); }
@@ -202,7 +209,7 @@ async function getBus(){
   return {rows};
 }
 
-/* Affichage */
+/* Rendu Visuel */
 function puce(r){
   if(typeof r.delay === "number") return r.delay > 0 ? `<span class="puce late">+${r.delay} min</span>` : `<span class="puce ok">à l'heure</span>`;
   return r.rt ? `<span class="puce rt">temps réel</span>` : `<span class="puce th">théorique</span>`;
@@ -215,15 +222,17 @@ function dessine(ul, rows){
 async function maj(nomUl, nomMaj, nomNote, fonction){
   try{
     const {rows, demo} = await fonction();
-    dessine($(nomUl), rows);
-    $(nomMaj).textContent = "Mis à jour à " + hm(new Date());
+    dessine($(nomUl), rows);$(nomMaj).textContent = "Mis à jour à " + hm(new Date());
     $(nomNote).innerHTML = demo ? `<span class="demo">Données de démonstration – renseignez les clés dans CONFIG</span>` : "";
   }catch(e){
     $(nomNote).textContent = "Données indisponibles, nouvelle tentative dans " + CONFIG.refreshSec + " s (" + e.message + ")";
   }
 }
+
+/* Exécution globale */
 function toutMaj(){
   majTrafic();
+  maj("#trains", "#majTrains", "#noteTrains", getTrains);
   maj("#bus", "#majBus", "#noteBus", getBus);
 }
 toutMaj(); setInterval(toutMaj, CONFIG.refreshSec * 1000);
