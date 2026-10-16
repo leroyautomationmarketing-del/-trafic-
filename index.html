@@ -46,6 +46,8 @@
   .ok{color:var(--vert)} .rt{color:var(--jaune)} .th{color:var(--discret)}
   .note{color:var(--discret);font-size:.85rem;margin-top:auto;padding-top:.4rem}
   .demo{color:var(--jaune)}
+  /* Style pour l'iframe des trains SNCF */
+  .cadre-train{flex:1;width:100%;border:none;border-radius:.4rem;background:#fff;}
 </style>
 </head>
 <body>
@@ -65,11 +67,10 @@
 
   <!-- Colonne Droite : Trains SNCF & Bus Tisséo -->
   <div class="col">
-    <!-- Bloc Trains -->
+    <!-- Bloc Trains (Intégration Officielle Gare & Connexions SNCF) -->
     <section>
-      <h2>Trains – Labège Innopole <small id="majTrains"></small></h2>
-      <ul id="trains"></ul>
-      <div class="note" id="noteTrains"></div>
+      <h2>Trains – Labège Innopole</h2>
+      <iframe class="cadre-train" src="https://www.garesetconnexions.sncf/fr/gare/frlbe/labege-innopole/prochains-departs" title="Prochains départs Labège Innopole"></iframe>
     </section>
 
     <!-- Bloc Bus -->
@@ -88,13 +89,9 @@ const CONFIG = {
   carte: { lat: 43.53, lon: 1.47, zoom: 12 },
   tomtomKey: "05L5n0Y7NnkNxQA4F1zhoCY13CKlYN6W", 
   rayonKm: 12,
-  sncf: { 
-    token: "dd8071e9e8894165a795c56a7d8a7992018af0e071b4bb0f032a6d62", 
-    stopArea: "stop_area:SNCF:87612002" 
-  },
   tisseo: { 
-    key: "", // Mettez votre clé API Tisséo ici lorsque vous l'aurez générée
-    arrets: ["18721", "18723", "18960", "18961"] // Arrêts Labège Innopole Gare & Rue Max Planck
+    key: "", 
+    arrets: ["18721", "18723", "18960", "18961"] 
   },
   refreshSec: 60
 };
@@ -104,7 +101,6 @@ const $ = s => document.querySelector(s);
 const pad = n => String(n).padStart(2, "0");
 const hm = d => pad(d.getHours()) + ":" + pad(d.getMinutes());
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const parseNav = s => new Date(+s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8), +s.slice(9,11), +s.slice(11,13), +s.slice(13,15));
 
 /* Horloge */
 function tick(){
@@ -131,9 +127,7 @@ function montre(){
   el.innerHTML = `<b>${esc(i.type)}</b><span>${esc(i.texte)}</span>`;
 }
 async function getIncidents(){
-  if(!CONFIG.tomtomKey) return {demo:true, rows:[
-    {type:"Accident", gravite:3, texte:"Rocade Est, vers Montpellier (+6 min)"},
-    {type:"Véhicule en panne", gravite:2, texte:"D 16, vers Labège"}]};
+  if(!CONFIG.tomtomKey) return {demo:true, rows:[{type:"Accident", gravite:3, texte:"Rocade Est (+6 min)"}]};
   const dLat = CONFIG.rayonKm/111, dLon = CONFIG.rayonKm/(111*Math.cos(L0.lat*Math.PI/180));
   const bbox = [L0.lon-dLon, L0.lat-dLat, L0.lon+dLon, L0.lat+dLat].join(",");
   const champs = encodeURIComponent("{incidents{properties{iconCategory,events{description},from,to,roadNumbers,delay}}}");
@@ -153,41 +147,20 @@ async function majTrafic(){
   try{
     const {rows, demo} = await getIncidents();
     incidents = rows; idx = 0; montre();
-    $("#noteTrafic").innerHTML = demo ? `<span class="demo">Accidents : démonstration</span>` : "Accidents mis à jour à " + hm(new Date());
+    $("#noteTrafic").innerHTML = demo ? `<span class="demo">Démonstration</span>` : "Accidents mis à jour à " + hm(new Date());
   }catch(e){
-    $("#noteTrafic").textContent = "Accidents indisponibles (" + e.message + ")";
+    $("#noteTrafic").textContent = "Indisponible (" + e.message + ")";
   }
 }
 setInterval(montre, 7000);
 
-/* Données de démonstration (secours) */
+/* Données Bus de secours */
 const inMin = m => new Date(Date.now() + m*60000);
-const demoTrains = () => [
-  {time:inMin(7),  delay:0, tag:"TER", label:"Toulouse Matabiau"},
-  {time:inMin(24), delay:6, tag:"TER", label:"Narbonne"},
-  {time:inMin(37), delay:0, tag:"TER", label:"Toulouse Matabiau"},
-  {time:inMin(55), delay:0, tag:"TER", label:"Carcassonne"}];
 const demoBus = () => [
   {time:inMin(3),  rt:true,  tag:"109", label:"Labège Innopole"},
   {time:inMin(9),  rt:true,  tag:"80",  label:"Ramonville"},
   {time:inMin(14), rt:false, tag:"204", label:"Labège Gare"},
   {time:inMin(21), rt:true,  tag:"109", label:"Saint-Orens"}];
-
-/* API SNCF */
-async function getTrains(){
-  const c = CONFIG.sncf;
-  if(!c.token || !c.stopArea) return {demo:true, rows:demoTrains()};
-  const r = await fetch(`https://api.sncf.com/v1/coverage/sncf/stop_areas/${c.stopArea}/departures?count=6&data_freshness=realtime`,
-    {headers:{Authorization:"Basic " + btoa(c.token + ":")}});
-  if(!r.ok) throw new Error("SNCF " + r.status);
-  const j = await r.json();
-  return {rows:(j.departures||[]).map(d => {
-    const prevu = parseNav(d.stop_date_time.base_departure_date_time);
-    const reel  = parseNav(d.stop_date_time.departure_date_time);
-    return {time:reel, delay:Math.round((reel-prevu)/60000),
-            tag:d.display_informations.commercial_mode || "Train", label:d.display_informations.direction};
-  })};
-}
 
 /* API Tisséo */
 const collecte = (o, out=[]) => {
@@ -209,9 +182,8 @@ async function getBus(){
   return {rows};
 }
 
-/* Rendu Visuel */
+/* Rendu Bus */
 function puce(r){
-  if(typeof r.delay === "number") return r.delay > 0 ? `<span class="puce late">+${r.delay} min</span>` : `<span class="puce ok">à l'heure</span>`;
   return r.rt ? `<span class="puce rt">temps réel</span>` : `<span class="puce th">théorique</span>`;
 }
 function dessine(ul, rows){
@@ -219,21 +191,21 @@ function dessine(ul, rows){
     `<li><span class="t">${hm(r.time)}</span><span class="tag">${esc(r.tag)}</span><span class="dest">${esc(r.label)}</span>${puce(r)}</li>`
   ).join("") || `<li><span class="dest">Aucun départ à venir</span></li>`;
 }
-async function maj(nomUl, nomMaj, nomNote, fonction){
+async function majBusData(){
   try{
-    const {rows, demo} = await fonction();
-    dessine($(nomUl), rows);$(nomMaj).textContent = "Mis à jour à " + hm(new Date());
-    $(nomNote).innerHTML = demo ? `<span class="demo">Données de démonstration – renseignez les clés dans CONFIG</span>` : "";
+    const {rows, demo} = await getBus();
+    dessine($("#bus"), rows);
+    $("#majBus").textContent = "Mis à jour à " + hm(new Date());
+    $("#noteBus").innerHTML = demo ? `<span class="demo">Données de démonstration (Bus)</span>` : "";
   }catch(e){
-    $(nomNote).textContent = "Données indisponibles, nouvelle tentative dans " + CONFIG.refreshSec + " s (" + e.message + ")";
+    $("#noteBus").textContent = "Bus indisponibles (" + e.message + ")";
   }
 }
 
 /* Exécution globale */
 function toutMaj(){
   majTrafic();
-  maj("#trains", "#majTrains", "#noteTrains", getTrains);
-  maj("#bus", "#majBus", "#noteBus", getBus);
+  majBusData();
 }
 toutMaj(); setInterval(toutMaj, CONFIG.refreshSec * 1000);
 </script>
