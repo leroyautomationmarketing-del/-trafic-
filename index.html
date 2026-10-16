@@ -48,6 +48,7 @@
   .note{color:var(--discret);font-size:.85rem;margin-top:auto;padding-top:.4rem}
   .demo{color:var(--jaune)}
 </style>
+ #alerte{display:none} 
 </head>
 <body>
 <header>
@@ -62,10 +63,12 @@
   </section>
   <div class="col">
     <section>
-      <h2>Trains – Labège Innopole <small id="majTrains"></small></h2>
-      <ul id="trains"></ul>
-      <p class="note" id="noteTrains"></p>
-    </section>
+  <h2>Trains – Labège Innopole</h2>
+  <div style="flex:1;position:relative;overflow:hidden;border-radius:.4rem;background:#fff">
+    <iframe src="https://www.ter.sncf.com/occitanie/se-deplacer/prochains-departs/labege-innopole-87612002"
+      style="position:absolute;left:0;width:100%;top:-300px;height:calc(100% + 300px);border:0"></iframe>
+  </div>
+</section>
     <section>
       <h2>Bus autour de l'entreprise <small id="majBus"></small></h2>
       <ul id="bus"></ul>
@@ -221,7 +224,6 @@ async function maj(nomUl, nomMaj, nomNote, fonction){
 }
 function toutMaj(){
   majTrafic();
-  maj("#trains", "#majTrains", "#noteTrains", getTrains);
   maj("#bus", "#majBus", "#noteBus", getBus);
 }
 toutMaj(); setInterval(toutMaj, CONFIG.refreshSec * 1000);
