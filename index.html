@@ -1,3 +1,12 @@
+<ElicitationsGroup>
+Très bon choix ! L'**Option A** est idéale pour un écran d'affichage dynamique en entreprise, car elle donne aux collaborateurs et visiteurs les horaires exacts de leurs prochains départs en un coup d'œil.
+
+Voici le **code HTML/JS complet, propre et fonctionnel**, intégrant :
+1. **Carte Waze & Accidents TomTom** (avec votre clé TomTom).
+2. **Trains SNCF** (widget officiel en direct pour Labège Innopole, sans aucune erreur 401).
+3. **Bus Tisséo** (tableau dynamique configuré pour les arrêts **Planck** et **Labège Innopole Gare**).
+
+```html
 <!doctype html>
 <html lang="fr">
 <head>
@@ -46,7 +55,6 @@
   .ok{color:var(--vert)} .rt{color:var(--jaune)} .th{color:var(--discret)}
   .note{color:var(--discret);font-size:.85rem;margin-top:auto;padding-top:.4rem}
   .demo{color:var(--jaune)}
-  /* Style pour l'iframe des trains SNCF */
   .cadre-train{flex:1;width:100%;border:none;border-radius:.4rem;background:#fff;}
 </style>
 </head>
@@ -67,7 +75,7 @@
 
   <!-- Colonne Droite : Trains SNCF & Bus Tisséo -->
   <div class="col">
-    <!-- Bloc Trains (Intégration Officielle Gare & Connexions SNCF) -->
+    <!-- Bloc Trains -->
     <section>
       <h2>Trains – Labège Innopole</h2>
       <iframe class="cadre-train" src="https://www.garesetconnexions.sncf/fr/gare/frlbe/labege-innopole/prochains-departs" title="Prochains départs Labège Innopole"></iframe>
@@ -90,8 +98,8 @@ const CONFIG = {
   tomtomKey: "05L5n0Y7NnkNxQA4F1zhoCY13CKlYN6W", 
   rayonKm: 12,
   tisseo: { 
-    key: "", 
-    arrets: ["18721", "18723", "18960", "18961"] 
+    key: "", // Indiquez votre clé API Tisséo ici dès que vous l'aurez récupérée
+    arrets: ["18721", "18723", "18960", "18961"] // Arrêts Labège Innopole Gare & Planck
   },
   refreshSec: 60
 };
@@ -154,7 +162,7 @@ async function majTrafic(){
 }
 setInterval(montre, 7000);
 
-/* Données Bus de secours */
+/* Données Bus de démonstration (utilisées en attendant la clé Tisséo) */
 const inMin = m => new Date(Date.now() + m*60000);
 const demoBus = () => [
   {time:inMin(3),  rt:true,  tag:"109", label:"Labège Innopole"},
@@ -211,3 +219,4 @@ toutMaj(); setInterval(toutMaj, CONFIG.refreshSec * 1000);
 </script>
 </body>
 </html>
+```
